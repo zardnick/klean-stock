@@ -1,0 +1,1515 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>클린 바코드 재고관리 - 틸인스 / 보노</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+    background: #f4f5f7;
+    color: #222;
+    line-height: 1.45;
+    padding-bottom: 80px;
+  }
+  header {
+    background: linear-gradient(135deg, #2563eb, #1e40af);
+    color: #fff;
+    padding: 16px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,.1);
+    position: sticky; top: 0; z-index: 50;
+  }
+  header h1 { font-size: 18px; font-weight: 700; }
+  header .sync-status { font-size: 12px; padding: 4px 10px; border-radius: 12px; background: rgba(255,255,255,.18); }
+  header .sync-status.on { background: #16a34a; }
+  header .sync-status.off { background: #6b7280; }
+  header .sync-status.err { background: #dc2626; }
+
+  nav.tabs {
+    display: flex;
+    background: #fff;
+    border-bottom: 1px solid #e5e7eb;
+    position: sticky; top: 56px; z-index: 40;
+    overflow-x: auto;
+  }
+  nav.tabs button {
+    flex: 1; min-width: 90px;
+    padding: 12px 8px;
+    background: none; border: none;
+    font-size: 14px; font-weight: 600;
+    color: #6b7280; cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all .15s;
+    white-space: nowrap;
+  }
+  nav.tabs button.active { color: #2563eb; border-bottom-color: #2563eb; background: #eff6ff; }
+
+  main { padding: 14px; max-width: 960px; margin: 0 auto; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .card {
+    background: #fff; border-radius: 12px;
+    padding: 16px; margin-bottom: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  }
+  .card h2 { font-size: 16px; margin-bottom: 12px; color: #111; }
+
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row > * { flex: 1; min-width: 0; }
+
+  input, select, textarea {
+    width: 100%;
+    padding: 11px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 15px;
+    background: #fff;
+    font-family: inherit;
+  }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
+  label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; margin-top: 10px; }
+
+  button.btn {
+    padding: 12px 16px;
+    border: none; border-radius: 8px;
+    font-size: 15px; font-weight: 600;
+    cursor: pointer;
+    transition: all .15s;
+    font-family: inherit;
+  }
+  .btn-primary { background: #2563eb; color: #fff; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-success { background: #16a34a; color: #fff; }
+  .btn-danger { background: #dc2626; color: #fff; }
+  .btn-secondary { background: #e5e7eb; color: #111; }
+  .btn-warn { background: #f59e0b; color: #fff; }
+  .btn-block { display: block; width: 100%; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* 스캐너 */
+  #reader { width: 100%; max-width: 480px; margin: 0 auto; border-radius: 8px; overflow: hidden; background: #000; }
+  #reader video { width: 100% !important; height: auto !important; }
+  .scan-hint { text-align: center; color: #6b7280; font-size: 13px; margin: 10px 0; }
+
+  /* 상품 카드 */
+  .selected-product {
+    background: linear-gradient(135deg, #eff6ff, #dbeafe);
+    border: 2px solid #2563eb;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+  .selected-product .name { font-size: 18px; font-weight: 700; color: #1e40af; margin-bottom: 4px; }
+  .selected-product .barcode { font-size: 13px; color: #6b7280; font-family: monospace; }
+  .selected-product .stock-info { margin-top: 10px; display: flex; gap: 10px; justify-content: center; }
+  .stock-badge { padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+  .stock-badge.office { background: #fef3c7; color: #92400e; }
+  .stock-badge.warehouse { background: #dbeafe; color: #1e40af; }
+  .stock-badge.total { background: #dcfce7; color: #166534; }
+
+  /* 입출고 라디오 카드 */
+  .choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+  .choice-grid label {
+    display: flex; align-items: center; justify-content: center;
+    padding: 14px 8px; border: 2px solid #e5e7eb; border-radius: 10px;
+    cursor: pointer; font-weight: 600; color: #6b7280;
+    transition: all .15s; margin: 0;
+    background: #fff;
+  }
+  .choice-grid input { display: none; }
+  .choice-grid input:checked + span { color: #fff; }
+  .choice-grid label:has(input:checked) { color: #fff; }
+  .choice-grid label.in:has(input:checked) { background: #16a34a; border-color: #16a34a; }
+  .choice-grid label.out:has(input:checked) { background: #dc2626; border-color: #dc2626; }
+  .choice-grid label.office:has(input:checked) { background: #f59e0b; border-color: #f59e0b; }
+  .choice-grid label.warehouse:has(input:checked) { background: #2563eb; border-color: #2563eb; }
+
+  /* 수량 컨트롤 */
+  .qty-control { display: flex; align-items: center; gap: 8px; margin: 8px 0 16px; }
+  .qty-control button {
+    width: 44px; height: 44px;
+    border: 1px solid #d1d5db; background: #fff;
+    border-radius: 8px; font-size: 22px; font-weight: 700;
+    cursor: pointer;
+  }
+  .qty-control input { flex: 1; text-align: center; font-size: 18px; font-weight: 700; height: 44px; }
+
+  /* 테이블 */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+  th { background: #f9fafb; font-weight: 600; color: #374151; position: sticky; top: 0; z-index: 2; }
+  tbody tr:hover { background: #f9fafb; }
+
+  /* 헤더 고정 + 본문만 스크롤 (재고현황/상품관리) */
+  .table-wrap.sticky-head {
+    max-height: 60vh;
+    overflow-y: auto;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+  }
+  .table-wrap.sticky-head thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: #f3f4f6;
+    box-shadow: inset 0 -1px 0 #d1d5db;
+  }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .badge-in { color: #16a34a; font-weight: 700; }
+  .badge-out { color: #dc2626; font-weight: 700; }
+  .low-stock { color: #dc2626; font-weight: 700; }
+
+  /* 상품관리: 상품명 input - 셀 안에서 가득 차고 폰트 크기는 JS가 동적으로 조정 */
+  .prod-name-input {
+    border: none;
+    background: transparent;
+    width: 100%;
+    font-size: 10px;
+    padding: 4px 2px;
+    text-overflow: clip;
+    white-space: normal;
+    word-break: break-all;
+    overflow: visible;
+  }
+  .prod-name-input:focus {
+    outline: none;
+    background: #fff7ed;
+    border-radius: 4px;
+  }
+
+  /* 상품관리: 바코드/검색어 input */
+  .prod-barcode-input {
+    border: none;
+    background: transparent;
+    width: 100%;
+    font-family: monospace;
+    font-size: 10px;
+    padding: 4px 2px;
+    white-space: normal;
+    word-break: break-all;
+    overflow: visible;
+  }
+  .prod-keywords-input {
+    border: none;
+    background: transparent;
+    width: 100%;
+    font-size: 10px;
+    padding: 4px 2px;
+    white-space: normal;
+    word-break: break-all;
+    overflow: visible;
+    color: #6b7280;
+  }
+  .prod-barcode-input:focus, .prod-keywords-input:focus {
+    outline: none;
+    background: #fff7ed;
+    border-radius: 4px;
+  }
+
+  /* 토스트 */
+  #toast {
+    position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+    background: #111; color: #fff; padding: 12px 20px; border-radius: 24px;
+    font-size: 14px; font-weight: 600; opacity: 0; pointer-events: none;
+    transition: opacity .25s; z-index: 100; max-width: 90%;
+  }
+  #toast.show { opacity: 1; }
+  #toast.success { background: #16a34a; }
+  #toast.error { background: #dc2626; }
+
+  /* 검색 */
+  .search-box { position: relative; margin-bottom: 12px; }
+  .search-box input { padding-left: 36px; }
+  .search-box::before { content: '🔍'; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 14px; }
+
+  .empty { text-align: center; padding: 30px; color: #9ca3af; }
+  .small { font-size: 12px; color: #6b7280; }
+  .hr { height: 1px; background: #e5e7eb; margin: 14px 0; }
+
+  /* 빠른 액션 */
+  .quick-pick {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 8px; margin-top: 10px;
+  }
+  .quick-pick button {
+    padding: 10px 6px; font-size: 12px; font-weight: 600;
+    background: #fff; border: 1px solid #d1d5db; border-radius: 8px;
+    cursor: pointer; text-align: left; line-height: 1.3;
+  }
+  .quick-pick button:hover { border-color: #2563eb; background: #eff6ff; }
+  .quick-pick button .qb { display: block; font-size: 10px; color: #9ca3af; font-family: monospace; margin-top: 2px; }
+
+  @media (max-width: 500px) {
+    header h1 { font-size: 15px; }
+    main { padding: 10px; }
+    .card { padding: 12px; }
+    nav.tabs button { font-size: 12px; padding: 10px 4px; }
+  }
+
+  /* 상품관리: 탭편집 셀 */
+  td.editable {
+    cursor: pointer;
+    overflow: visible;
+    white-space: normal !important;
+    word-break: break-all !important;
+    text-overflow: clip !important;
+    font-size: 10px;
+    line-height: 1.4;
+    vertical-align: top;
+  }
+  td.editable:hover { background: #f0f7ff; }
+  td.editable.num { text-align: right; white-space: nowrap !important; word-break: normal !important; }
+  .prod-pagination { display:flex; gap:8px; align-items:center; justify-content:center; margin-top:10px; font-size:13px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📦 클린 바코드 재고관리</h1>
+  <span id="syncStatus" class="sync-status off">시트 미연동</span>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="scan">🔍 스캔/입출고</button>
+  <button class="tab-btn" data-tab="inventory">📊 재고현황</button>
+  <button class="tab-btn" data-tab="history">📋 거래내역</button>
+  <button class="tab-btn" data-tab="products">🏷️ 상품관리</button>
+  <button class="tab-btn" data-tab="settings">⚙️ 설정</button>
+</nav>
+
+<main>
+
+<!-- ============ 스캔/입출고 ============ -->
+<section class="panel active" id="panel-scan">
+  <div class="card">
+    <h2>1. 바코드 / QR 코드 스캔</h2>
+    <div id="httpsWarn" style="display:none; padding:12px; background:#fff7ed; border:1px solid #fdba74; border-radius:8px; margin-bottom:10px; font-size:13px; color:#9a3412;">
+      ⚠️ <b>이 환경에서는 카메라 사용이 차단됩니다.</b><br>
+      카카오톡/파일앱에서 직접 열면 보안상 카메라가 작동하지 않습니다.<br>
+      → <b>블루투스/USB 바코드 스캐너</b>를 쓰거나, 아래 검색창에 직접 입력하세요.<br>
+      → 카메라로 스캔하려면 <b>HTTPS 호스팅</b>이 필요합니다. ("호스팅_가이드.md" 참고)
+    </div>
+    <div id="reader"></div>
+    <div class="scan-hint">📱 일반 바코드(EAN/CODE128 등)와 QR 코드 모두 인식됩니다.<br>카메라가 안 켜지면 아래 검색창에 직접 입력하거나, 블루투스 스캐너를 사용하세요</div>
+    <div class="row" style="margin-top:8px;">
+      <button class="btn btn-primary" id="btnStartScan">📷 카메라 시작</button>
+      <button class="btn btn-secondary" id="btnStopScan">⏸ 정지</button>
+    </div>
+    <label>🔎 상품 검색 (바코드 / QR / 상품명 / 검색어)</label>
+    <div class="row">
+      <input type="text" id="manualBarcode" placeholder="바코드·QR 스캔 또는 검색어 입력 후 엔터" autocomplete="off">
+      <button class="btn btn-primary" id="btnManualSearch" style="flex:0 0 auto;">검색</button>
+    </div>
+    <div class="small" style="margin-top:6px;">
+      바코드가 정확히 일치하면 바로 선택, 아니면 일치하는 상품 목록을 보여줍니다.
+    </div>
+    <div id="searchResult" class="quick-pick" style="margin-top:10px;"></div>
+    <div class="small" style="margin-top:10px;">⭐ 최근/자주 쓰는 상품</div>
+    <div id="quickPick" class="quick-pick"></div>
+  </div>
+
+  <div id="selectedBox" style="display:none;">
+    <div class="selected-product">
+      <div class="name" id="selName">-</div>
+      <div class="barcode" id="selBarcode">-</div>
+      <div class="stock-info">
+        <span class="stock-badge office">사무실: <b id="selOffice">0</b></span>
+        <span class="stock-badge warehouse">창고: <b id="selWarehouse">0</b></span>
+        <span class="stock-badge total">합계: <b id="selTotal">0</b></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>2. 입고/출고 선택</h2>
+      <div class="choice-grid">
+        <label class="in"><input type="radio" name="txType" value="입고" checked><span>📥 입고</span></label>
+        <label class="out"><input type="radio" name="txType" value="출고"><span>📤 출고</span></label>
+      </div>
+
+      <h2 style="margin-top:14px;">3. 위치 선택</h2>
+      <div class="choice-grid">
+        <label class="office"><input type="radio" name="location" value="사무실" checked><span>🏢 사무실</span></label>
+        <label class="warehouse"><input type="radio" name="location" value="창고"><span>🏭 창고</span></label>
+      </div>
+
+      <h2 style="margin-top:14px;">4. 수량 입력</h2>
+      <div class="qty-control">
+        <button onclick="changeQty(-10)">-10</button>
+        <button onclick="changeQty(-1)">-1</button>
+        <input type="number" id="qty" value="0" min="0">
+        <button onclick="changeQty(1)">+1</button>
+        <button onclick="changeQty(10)">+10</button>
+      </div>
+
+      <label>메모 (선택)</label>
+      <input type="text" id="memo" placeholder="거래처, 비고 등">
+
+      <button class="btn btn-primary btn-block" id="btnConfirm" style="margin-top:14px; padding:16px; font-size:17px;">
+        ✅ 처리하기
+      </button>
+      <button class="btn btn-secondary btn-block" id="btnCancel" style="margin-top:8px;">취소</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 재고현황 ============ -->
+<section class="panel" id="panel-inventory">
+  <div class="card">
+    <h2>📊 실시간 재고현황</h2>
+    <div class="search-box">
+      <input type="text" id="invSearch" placeholder="상품명 또는 바코드 검색">
+    </div>
+    <div class="row" style="margin-bottom:10px;">
+      <button class="btn btn-secondary" id="btnExportInv">📥 CSV 내보내기</button>
+      <button class="btn btn-success" id="btnSyncSheet">⬇️ 구글시트에서 가져오기</button>
+    </div>
+    <div class="table-wrap sticky-head">
+      <table id="invTable">
+        <thead>
+          <tr>
+            <th>상품명</th>
+            <th>바코드</th>
+            <th class="num">사무실</th>
+            <th class="num">창고</th>
+            <th class="num">합계</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="hr"></div>
+    <div class="small">
+      <b>총 상품수:</b> <span id="statTotalItems">0</span>종 |
+      <b>총 재고:</b> <span id="statTotalQty">0</span>개 |
+      <b>마지막 업데이트:</b> <span id="statLastUpdate">-</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 거래내역 ============ -->
+<section class="panel" id="panel-history">
+  <div class="card">
+    <h2>📋 입출고 거래내역</h2>
+    <div class="search-box">
+      <input type="text" id="histSearch" placeholder="상품명/바코드/메모 검색">
+    </div>
+    <div class="row" style="margin-bottom:10px;">
+      <button class="btn btn-secondary" id="btnExportHist">📥 CSV 내보내기</button>
+      <button class="btn btn-danger" id="btnClearHist">🗑 전체 삭제</button>
+    </div>
+    <div class="table-wrap">
+      <table id="histTable">
+        <thead>
+          <tr>
+            <th>일시</th>
+            <th>상품</th>
+            <th>구분</th>
+            <th>위치</th>
+            <th class="num">수량</th>
+            <th>메모</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 상품관리 ============ -->
+<section class="panel" id="panel-products">
+  <div class="card">
+    <h2>🏷️ 상품 추가</h2>
+    <label>상품명</label>
+    <input type="text" id="pName" placeholder="예: 틸인스 스위치 1구 [Ti1 화이트]">
+    <label>바코드</label>
+    <div class="row">
+      <input type="text" id="pBarcode" placeholder="바코드를 입력하거나 스캔">
+      <button class="btn btn-secondary" id="btnScanForAdd" style="flex:0 0 auto;">📷 스캔</button>
+    </div>
+    <label>검색어 <span class="small" style="font-weight:normal;">(쉼표로 구분, 예: 스위치1구, 1구, ti1, 화이트)</span></label>
+    <input type="text" id="pKeywords" placeholder="예: 1구, ti1, 화이트, 틸인스">
+    <label>기본수량 <span class="small" style="font-weight:normal;">(스캔 시 자동 입력될 값. 0이면 수동 입력)</span></label>
+    <input type="number" id="pDefaultQty" value="0" min="0">
+    <label>초기 재고 - 사무실</label>
+    <input type="number" id="pOffice" value="0" min="0">
+    <label>초기 재고 - 창고</label>
+    <input type="number" id="pWarehouse" value="0" min="0">
+    <button class="btn btn-primary btn-block" id="btnAddProduct" style="margin-top:14px;">상품 추가</button>
+  </div>
+
+  <div class="card">
+    <h2>📋 등록된 상품 목록</h2>
+    <div class="search-box">
+      <input type="text" id="prodSearch" placeholder="검색">
+    </div>
+    <div class="row" style="margin-bottom:10px;">
+      <button class="btn btn-secondary" id="btnImportCsv">📤 CSV 가져오기</button>
+      <button class="btn btn-secondary" id="btnExportProd">📥 CSV 내보내기</button>
+      <input type="file" id="csvFile" accept=".csv" style="display:none;">
+    </div>
+    <button class="btn btn-success btn-block" id="btnPushProducts" style="margin-bottom:10px;">
+      ☁️ 현황 업로드 (수정하기)
+    </button>
+    <p class="small" style="color:#6b7280; margin-bottom:10px; text-align:center;">
+      재고 수정 후 위 버튼을 누르면 구글시트에 반영됩니다
+    </p>
+    <div class="table-wrap sticky-head">
+      <table id="prodTable">
+        <thead>
+          <tr>
+            <th>상품명</th>
+            <th>바코드</th>
+            <th>검색어</th>
+            <th class="num">기본수량</th>
+            <th class="num">사무실</th>
+            <th class="num">창고</th>
+            <th>작업</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 설정 ============ -->
+<section class="panel" id="panel-settings">
+  <div class="card">
+    <h2>🔗 구글시트 연동</h2>
+    <p class="small" style="margin-bottom:10px;">
+      구글시트 Apps Script로 만든 Web App URL을 입력하세요.<br>
+      설치 방법은 함께 제공된 "구글시트_설치가이드.md"를 참고하세요.
+    </p>
+    <label>Web App URL</label>
+    <input type="text" id="sheetUrl" placeholder="https://script.google.com/macros/s/.../exec">
+    <div class="row" style="margin-top:10px;">
+      <button class="btn btn-primary" id="btnSaveSheet">URL 저장</button>
+      <button class="btn btn-success" id="btnTestSheet">연결 테스트</button>
+      <button class="btn btn-warn" id="btnPushAll">전체 업로드</button>
+      <button class="btn btn-secondary" id="btnPullAll">전체 다운로드</button>
+    </div>
+    <label style="margin-top:14px;">
+      <input type="checkbox" id="autoSync" style="width:auto; margin-right:6px;"> 거래 발생 시 자동 동기화
+    </label>
+  </div>
+
+  <div class="card">
+    <h2>💾 데이터 백업</h2>
+    <p class="small" style="margin-bottom:10px;">
+      현재 모든 데이터는 브라우저에 저장됩니다. 다른 PC로 옮기려면 백업 파일을 사용하세요.
+    </p>
+    <div class="row">
+      <button class="btn btn-secondary" id="btnBackup">💾 전체 백업 (JSON)</button>
+      <button class="btn btn-secondary" id="btnRestore">📂 백업 복원</button>
+      <input type="file" id="restoreFile" accept=".json" style="display:none;">
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>⚠️ 초기화</h2>
+    <button class="btn btn-danger btn-block" id="btnReset">모든 데이터 초기화</button>
+  </div>
+</section>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+/* ====================================================================
+   클린 바코드 재고관리 - 전체 로직
+   - 로컬 저장: localStorage
+   - 구글시트 동기화: Apps Script Web App (POST)
+==================================================================== */
+
+const LS = {
+  products: 'inv_products_v1',
+  history:  'inv_history_v1',
+  sheetUrl: 'inv_sheet_url',
+  autoSync: 'inv_auto_sync',
+};
+
+let products = JSON.parse(localStorage.getItem(LS.products) || '[]');
+let history  = JSON.parse(localStorage.getItem(LS.history)  || '[]');
+let sheetUrl = localStorage.getItem(LS.sheetUrl) || '';
+let autoSync = localStorage.getItem(LS.autoSync) === '1';
+let selected = null;
+let scanner = null;
+
+/* ---------- 시드 데이터 (최초 1회) ---------- */
+if (products.length === 0) {
+  const seed = [
+    { n:'틸인스 콘센트 세로 2구 [Ti1 화이트]', k:'콘센트, 세로2구, 2구콘센트, ti1, 화이트, 틸인스' },
+    { n:'틸인스 스위치 1구 [Ti1 화이트]',      k:'스위치, 1구, ti1, 화이트, 틸인스' },
+    { n:'틸인스 스위치 2구 [Ti1 화이트]',      k:'스위치, 2구, ti1, 화이트, 틸인스' },
+    { n:'틸인스 스위치 3구 [Ti1 화이트]',      k:'스위치, 3구, ti1, 화이트, 틸인스' },
+    { n:'틸인스 스위치 중4구 [Ti1 화이트]',    k:'스위치, 4구, 중4구, ti1, 화이트, 틸인스' },
+    { n:'틸인스 스위치 중5구 [Ti1 화이트]',    k:'스위치, 5구, 중5구, ti1, 화이트, 틸인스' },
+  ];
+  products = seed.map((s, i) => ({
+    id: 'p' + Date.now() + i,
+    name: s.n,
+    barcode: '88000000' + String(1001 + i),
+    keywords: s.k,
+    defaultQty: 0,
+    office: 0,
+    warehouse: 0,
+  }));
+  saveProducts();
+}
+
+/* ---------- 데이터 마이그레이션: 누락 필드 보강 ---------- */
+let __migrated = false;
+products.forEach(p => {
+  if (p.keywords === undefined)   { p.keywords = '';   __migrated = true; }
+  if (p.defaultQty === undefined) { p.defaultQty = 0;  __migrated = true; }
+});
+if (__migrated) saveProducts();
+
+/* ====================  유틸  ==================== */
+function saveProducts() { localStorage.setItem(LS.products, JSON.stringify(products)); }
+function saveHistory()  { localStorage.setItem(LS.history,  JSON.stringify(history)); }
+
+function $(sel) { return document.querySelector(sel); }
+function $$(sel) { return document.querySelectorAll(sel); }
+
+function toast(msg, type = '') {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.className = 'show ' + type;
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(() => { t.className = ''; }, 2500);
+}
+
+function nowStr() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function beep(ok = true) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = ok ? 1200 : 400;
+    gain.gain.value = 0.1;
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.12);
+  } catch(e){}
+}
+
+/* ====================  탭 전환  ==================== */
+$$('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    $$('.tab-btn').forEach(b => b.classList.remove('active'));
+    $$('.panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    $('#panel-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'inventory') renderInventory();
+    if (btn.dataset.tab === 'history') renderHistory();
+    if (btn.dataset.tab === 'products') renderProducts();
+    // 스캔 탭이 아닐 때는 카메라 자동 정지 (배터리/리소스 절약 + 오작동 방지)
+    if (btn.dataset.tab !== 'scan') {
+      stopScanner();
+    } else {
+      // 스캔 탭으로 가면 검색창 자동 포커스 (블루투스/USB 스캐너 대응)
+      setTimeout(() => $('#manualBarcode').focus(), 100);
+    }
+  });
+});
+
+/* ====================  HTTPS 환경 감지  ==================== */
+function isSecureForCamera() {
+  // HTTPS 또는 localhost 만 카메라 허용
+  if (location.protocol === 'https:') return true;
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return true;
+  return false;
+}
+if (!isSecureForCamera()) {
+  $('#httpsWarn').style.display = 'block';
+  $('#btnStartScan').disabled = true;
+  $('#btnStartScan').textContent = '📷 카메라 사용 불가 (HTTPS 필요)';
+}
+
+/* ====================  바코드 스캐너  ==================== */
+async function startScanner(onSuccess) {
+  if (!isSecureForCamera()) {
+    toast('이 환경에서는 카메라 사용 불가 - 검색창에 직접 입력하세요', 'error');
+    $('#manualBarcode').focus();
+    return;
+  }
+  if (scanner) {
+    try { await scanner.stop(); } catch(e){}
+    scanner = null;
+  }
+  // QR 코드 + 1D 바코드(EAN/CODE128/UPC 등) + DataMatrix 모두 지원
+  const supportedFormats = (typeof Html5QrcodeSupportedFormats !== 'undefined') ? [
+    Html5QrcodeSupportedFormats.QR_CODE,
+    Html5QrcodeSupportedFormats.EAN_13,
+    Html5QrcodeSupportedFormats.EAN_8,
+    Html5QrcodeSupportedFormats.CODE_128,
+    Html5QrcodeSupportedFormats.CODE_39,
+    Html5QrcodeSupportedFormats.CODE_93,
+    Html5QrcodeSupportedFormats.UPC_A,
+    Html5QrcodeSupportedFormats.UPC_E,
+    Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION,
+    Html5QrcodeSupportedFormats.ITF,
+    Html5QrcodeSupportedFormats.CODABAR,
+    Html5QrcodeSupportedFormats.DATA_MATRIX,
+    Html5QrcodeSupportedFormats.AZTEC,
+    Html5QrcodeSupportedFormats.PDF_417,
+  ] : undefined;
+
+  scanner = new Html5Qrcode("reader", { formatsToSupport: supportedFormats });
+
+  // 뷰파인더 크기에 맞춰 정사각형 스캔 영역을 동적으로 계산
+  // → QR 코드(정사각형)와 1D 바코드 모두 한 영역 안에서 인식 가능
+  const qrboxFn = (viewfinderWidth, viewfinderHeight) => {
+    const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+    const size = Math.max(160, Math.floor(minEdge * 0.75));
+    return { width: size, height: size };
+  };
+
+  try {
+    await scanner.start(
+      { facingMode: "environment" },
+      {
+        fps: 10,
+        qrbox: qrboxFn,
+        aspectRatio: 1.0,
+        formatsToSupport: supportedFormats,
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+      },
+      (decodedText) => {
+        beep(true);
+        if (navigator.vibrate) navigator.vibrate(80);
+        onSuccess(decodedText);
+      },
+      () => {}
+    );
+  } catch (err) {
+    const msg = String(err);
+    if (msg.includes('NotAllowed') || msg.includes('Permission')) {
+      toast('카메라 권한 거부됨 - 브라우저 설정에서 카메라 허용 필요', 'error');
+    } else if (msg.includes('NotFound')) {
+      toast('카메라를 찾을 수 없습니다', 'error');
+    } else {
+      toast('카메라 시작 실패: ' + err, 'error');
+    }
+    $('#manualBarcode').focus();
+  }
+}
+
+async function stopScanner() {
+  if (scanner) {
+    try { await scanner.stop(); } catch(e){}
+    scanner = null;
+  }
+}
+
+$('#btnStartScan').addEventListener('click', () => {
+  startScanner(code => handleBarcode(code));
+});
+$('#btnStopScan').addEventListener('click', stopScanner);
+
+$('#btnManualSearch').addEventListener('click', () => {
+  const q = $('#manualBarcode').value.trim();
+  if (q) handleSearch(q);
+});
+$('#manualBarcode').addEventListener('keypress', e => {
+  if (e.key === 'Enter') $('#btnManualSearch').click();
+});
+$('#manualBarcode').addEventListener('input', e => {
+  const q = e.target.value.trim();
+  if (q.length >= 1) showSearchResults(q);
+  else $('#searchResult').innerHTML = '';
+});
+
+/* 스캐너 디바운스: 같은 바코드가 짧은 시간 내 반복 인식되지 않도록 차단 */
+let __lastScan = { code: '', at: 0 };
+let __dialogOpen = false;
+
+function shouldDebounce(code) {
+  const now = Date.now();
+  // 다이얼로그가 열려있는 동안은 카메라 입력 모두 무시
+  if (__dialogOpen) return true;
+  // 같은 바코드 3초 이내 재인식 차단
+  if (code === __lastScan.code && (now - __lastScan.at) < 3000) return true;
+  __lastScan = { code, at: now };
+  return false;
+}
+
+/* 카메라 또는 USB 스캐너의 입력은 항상 바코드로 처리 */
+function handleBarcode(code) {
+  code = code.trim();
+  if (!code) return;
+  if (shouldDebounce(code)) return;
+
+  const p = products.find(x => x.barcode === code);
+  if (!p) {
+    beep(false);
+    // (1) 카메라 즉시 정지 → 같은 바코드가 다시 인식되어 팝업이 반복되는 것을 막음
+    stopScanner();
+    toast('등록되지 않은 바코드: ' + code, 'error');
+
+    __dialogOpen = true;
+    // toast가 잠깐 보인 뒤 confirm 표시
+    setTimeout(() => {
+      const ok = confirm(`바코드 "${code}"가 등록되어 있지 않습니다.\n상품관리에서 등록하시겠습니까?`);
+      __dialogOpen = false;
+      __lastScan = { code: '', at: 0 }; // 디바운스 초기화
+
+      if (ok) {
+        // (2) 상품관리 탭으로 이동 → 바코드 자동 입력 → 상품명 입력 대기
+        $('.tab-btn[data-tab="products"]').click();
+        setTimeout(() => {
+          $('#pBarcode').value = code;
+          $('#pName').value = '';
+          $('#pKeywords').value = '';
+          $('#pDefaultQty').value = 0;
+          $('#pOffice').value = 0;
+          $('#pWarehouse').value = 0;
+          $('#pName').focus();
+          $('#pName').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 150);
+      }
+    }, 100);
+    return;
+  }
+  selectProduct(p);
+}
+
+/* 통합 검색: 바코드 정확 일치 → 즉시 선택, 그 외 → 결과 목록 */
+function handleSearch(q) {
+  q = q.trim();
+  if (!q) return;
+  // 바코드 정확 일치
+  const exact = products.find(x => x.barcode === q);
+  if (exact) { selectProduct(exact); $('#searchResult').innerHTML = ''; return; }
+  // 부분 매칭 결과 표시
+  const matches = matchProducts(q);
+  if (matches.length === 0) {
+    beep(false);
+    toast('일치하는 상품이 없습니다: ' + q, 'error');
+    if (confirm(`"${q}"에 일치하는 상품이 없습니다.\n새 상품으로 등록하시겠습니까?`)) {
+      $('.tab-btn[data-tab="products"]').click();
+      setTimeout(() => {
+        // 숫자만 있으면 바코드로 추정, 아니면 이름으로
+        if (/^\d+$/.test(q)) {
+          $('#pBarcode').value = q;
+          $('#pName').value = '';
+        } else {
+          $('#pBarcode').value = '';
+          $('#pName').value = q;
+        }
+        $('#pKeywords').value = '';
+        $('#pDefaultQty').value = 0;
+        $('#pOffice').value = 0;
+        $('#pWarehouse').value = 0;
+        $('#pName').focus();
+        $('#pName').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 150);
+    }
+    return;
+  }
+  if (matches.length === 1) {
+    selectProduct(matches[0]);
+    $('#searchResult').innerHTML = '';
+    return;
+  }
+  showSearchResults(q);
+}
+
+/* 상품명/바코드/검색어 통합 매칭 */
+function matchProducts(q) {
+  q = q.toLowerCase().trim();
+  if (!q) return [];
+  // 공백으로 여러 검색어 입력 시 모두 포함된 상품만 (AND 검색)
+  const tokens = q.split(/\s+/).filter(Boolean);
+  return products.filter(p => {
+    const hay = (p.name + ' ' + p.barcode + ' ' + (p.keywords||'')).toLowerCase();
+    return tokens.every(t => hay.includes(t));
+  });
+}
+
+function showSearchResults(q) {
+  const box = $('#searchResult');
+  const matches = matchProducts(q);
+  box.innerHTML = '';
+  if (matches.length === 0) {
+    box.innerHTML = '<div class="empty" style="grid-column:1/-1;">검색 결과 없음</div>';
+    return;
+  }
+  matches.slice(0, 20).forEach(p => {
+    const b = document.createElement('button');
+    const total = p.office + p.warehouse;
+    const dq = p.defaultQty || 0;
+    b.innerHTML = `
+      ${escapeHtml(p.name)}
+      <span class="qb">${escapeHtml(p.barcode)} · 재고 ${total}${dq > 0 ? ` · 기본 ${dq}` : ''}</span>
+    `;
+    b.style.borderColor = total <= 0 ? '#dc2626' : total <= 5 ? '#f59e0b' : '#d1d5db';
+    b.addEventListener('click', () => {
+      selectProduct(p);
+      $('#searchResult').innerHTML = '';
+      $('#manualBarcode').value = '';
+    });
+    box.appendChild(b);
+  });
+}
+
+function selectProduct(p) {
+  selected = p;
+  $('#selectedBox').style.display = 'block';
+  $('#selName').textContent = p.name;
+  $('#selBarcode').textContent = p.barcode;
+  updateSelStock();
+  $('#manualBarcode').value = '';
+  // 상품의 기본수량을 수량란에 자동 입력 (없으면 0)
+  $('#qty').value = (typeof p.defaultQty === 'number' && p.defaultQty > 0) ? p.defaultQty : 0;
+  $('#memo').value = '';
+  $('#selectedBox').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  toast('상품 선택: ' + p.name, 'success');
+}
+
+function updateSelStock() {
+  if (!selected) return;
+  $('#selOffice').textContent = selected.office;
+  $('#selWarehouse').textContent = selected.warehouse;
+  $('#selTotal').textContent = selected.office + selected.warehouse;
+}
+
+/* ====================  수량 컨트롤  ==================== */
+function changeQty(delta) {
+  const el = $('#qty');
+  const v = Math.max(0, (parseInt(el.value) || 0) + delta);
+  el.value = v;
+}
+
+/* ====================  거래 처리  ==================== */
+$('#btnConfirm').addEventListener('click', () => {
+  if (!selected) return toast('상품을 먼저 선택하세요', 'error');
+  const type = document.querySelector('input[name=txType]:checked').value;
+  const loc  = document.querySelector('input[name=location]:checked').value;
+  const qty  = parseInt($('#qty').value) || 0;
+  const memo = $('#memo').value.trim();
+  if (qty < 1) { toast('수량을 입력하세요', 'error'); $('#qty').focus(); $('#qty').select(); return; }
+
+  const field = loc === '사무실' ? 'office' : 'warehouse';
+  if (type === '출고' && selected[field] < qty) {
+    if (!confirm(`${loc} 재고(${selected[field]})가 부족합니다.\n계속 진행하시겠습니까? (음수 재고 허용)`)) return;
+  }
+  if (type === '입고') selected[field] += qty;
+  else selected[field] -= qty;
+
+  // 거래내역 기록
+  const tx = {
+    id: 't' + Date.now(),
+    time: nowStr(),
+    productId: selected.id,
+    productName: selected.name,
+    barcode: selected.barcode,
+    type: type,
+    location: loc,
+    qty: qty,
+    memo: memo,
+    officeAfter: selected.office,
+    warehouseAfter: selected.warehouse,
+  };
+  history.unshift(tx);
+  saveProducts();
+  saveHistory();
+  updateSelStock();
+
+  beep(true);
+  toast(`✅ ${type} 완료: ${selected.name} ${qty}개 (${loc})`, 'success');
+
+  // 자동 동기화
+  if (autoSync && sheetUrl) {
+    pushTransactionToSheet(tx);
+  }
+
+  // 초기화 + 다음 스캔 준비
+  $('#qty').value = 0;
+  $('#memo').value = '';
+  renderQuickPick();
+  // 검색창에 포커스 → 블루투스 스캐너로 바로 다음 상품 스캔 가능
+  setTimeout(() => $('#manualBarcode').focus(), 200);
+});
+
+$('#btnCancel').addEventListener('click', () => {
+  selected = null;
+  $('#selectedBox').style.display = 'none';
+});
+
+/* ====================  재고현황  ==================== */
+function renderInventory() {
+  const q = ($('#invSearch').value || '').toLowerCase().trim();
+  const tokens = q.split(/\s+/).filter(Boolean);
+  const list = products.filter(p => {
+    if (!tokens.length) return true;
+    const hay = (p.name + ' ' + p.barcode + ' ' + (p.keywords||'')).toLowerCase();
+    return tokens.every(t => hay.includes(t));
+  });
+  const tbody = $('#invTable tbody');
+  tbody.innerHTML = '';
+  let totalQty = 0;
+  list.forEach(p => {
+    const total = p.office + p.warehouse;
+    totalQty += total;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(p.name)}</td>
+      <td><code>${escapeHtml(p.barcode)}</code></td>
+      <td class="num ${p.office < 0 ? 'low-stock' : ''}">${p.office}</td>
+      <td class="num ${p.warehouse < 0 ? 'low-stock' : ''}">${p.warehouse}</td>
+      <td class="num ${total <= 5 ? 'low-stock' : ''}">${total}</td>
+    `;
+    tr.addEventListener('click', () => {
+      selectProduct(p);
+      $('.tab-btn[data-tab="scan"]').click();
+    });
+    tr.style.cursor = 'pointer';
+    tbody.appendChild(tr);
+  });
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">상품이 없습니다</td></tr>';
+  }
+  $('#statTotalItems').textContent = products.length;
+  $('#statTotalQty').textContent = totalQty;
+  $('#statLastUpdate').textContent = nowStr();
+}
+$('#invSearch').addEventListener('input', renderInventory);
+
+/* ====================  거래내역  ==================== */
+function renderHistory() {
+  const q = ($('#histSearch').value || '').toLowerCase();
+  const list = history.filter(h =>
+    !q || h.productName.toLowerCase().includes(q) ||
+    (h.barcode||'').toLowerCase().includes(q) ||
+    (h.memo||'').toLowerCase().includes(q)
+  );
+  const tbody = $('#histTable tbody');
+  tbody.innerHTML = '';
+  list.forEach(h => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(h.time)}</td>
+      <td>${escapeHtml(h.productName)}</td>
+      <td class="${h.type === '입고' ? 'badge-in' : 'badge-out'}">${h.type}</td>
+      <td>${escapeHtml(h.location)}</td>
+      <td class="num">${h.qty}</td>
+      <td>${escapeHtml(h.memo || '')}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">거래 내역이 없습니다</td></tr>';
+  }
+}
+$('#histSearch').addEventListener('input', renderHistory);
+
+$('#btnClearHist').addEventListener('click', () => {
+  if (!confirm('모든 거래내역을 삭제하시겠습니까?\n(재고 수량은 유지됩니다)')) return;
+  history = [];
+  saveHistory();
+  renderHistory();
+  toast('거래내역 삭제 완료', 'success');
+});
+
+/* ----- 폰트 크기를 글자 수 기반으로 조정 (Canvas/reflow 없음) ----- */
+function fitInputFontSize(input, maxSize = 14, minSize = 7) {
+  const len = (input.value || '').length;
+  if (len === 0) { input.style.fontSize = maxSize + 'px'; return; }
+  const breakpoints = [
+    [0,  maxSize],
+    [10, maxSize],
+    [15, Math.max(minSize, maxSize - 2)],
+    [20, Math.max(minSize, maxSize - 4)],
+    [30, minSize],
+  ];
+  let size = minSize;
+  for (let i = 0; i < breakpoints.length - 1; i++) {
+    const [l0, s0] = breakpoints[i];
+    const [l1, s1] = breakpoints[i + 1];
+    if (len <= l1) {
+      const t = (len - l0) / (l1 - l0);
+      size = s0 + (s1 - s0) * t;
+      break;
+    }
+  }
+  input.style.fontSize = Math.max(minSize, Math.min(maxSize, Math.round(size * 2) / 2)) + 'px';
+}
+
+/* ====================  상품관리  ==================== */
+let _prodPage = 0;
+let _prodDelegationSetup = false;
+
+function renderProducts() {
+  const q = ($('#prodSearch').value || '').toLowerCase().trim();
+  const tokens = q.split(/\s+/).filter(Boolean);
+  const filtered = products.filter(p => {
+    if (!tokens.length) return true;
+    const hay = (p.name + ' ' + p.barcode + ' ' + (p.keywords||'')).toLowerCase();
+    return tokens.every(t => hay.includes(t));
+  });
+
+  const PAGE_SIZE = 50;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  if (_prodPage >= totalPages) _prodPage = totalPages - 1;
+  const list = filtered.slice(_prodPage * PAGE_SIZE, (_prodPage + 1) * PAGE_SIZE);
+
+  const tbody = $('#prodTable tbody');
+  tbody.innerHTML = '';
+
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">상품이 없습니다</td></tr>';
+  } else {
+    list.forEach(p => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="editable" data-id="${p.id}" data-field="name">${escapeHtml(p.name)}</td>
+        <td class="editable" data-id="${p.id}" data-field="barcode">${escapeHtml(p.barcode)}</td>
+        <td class="editable" data-id="${p.id}" data-field="keywords">${escapeHtml(p.keywords||'')}</td>
+        <td class="editable num" data-id="${p.id}" data-field="defaultQty">${p.defaultQty||0}</td>
+        <td class="editable num" data-id="${p.id}" data-field="office">${p.office}</td>
+        <td class="editable num" data-id="${p.id}" data-field="warehouse">${p.warehouse}</td>
+        <td><button class="btn btn-danger" style="padding:6px 10px;font-size:12px;" data-del="${p.id}">삭제</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // 이벤트 위임 — 최초 1회만 등록 (tbody 참조가 유지되므로 innerHTML 갱신 후에도 유효)
+  if (!_prodDelegationSetup) {
+    _prodDelegationSetup = true;
+    tbody.addEventListener('click', e => {
+      // 삭제 버튼
+      const delBtn = e.target.closest('button[data-del]');
+      if (delBtn) {
+        const id = delBtn.dataset.del;
+        const p = products.find(x => x.id === id);
+        if (!p) return;
+        if (!confirm(`"${p.name}" 상품을 삭제하시겠습니까?`)) return;
+        products = products.filter(x => x.id !== id);
+        saveProducts();
+        renderProducts();
+        renderQuickPick();
+        toast('삭제 완료', 'success');
+        return;
+      }
+      // 탭 편집 — 이미 편집 중인 셀은 무시
+      const td = e.target.closest('td.editable');
+      if (!td || td.querySelector('input')) return;
+      const field = td.dataset.field;
+      const isNum = td.classList.contains('num');
+      const originalText = td.textContent.trim();
+      const inp = document.createElement('input');
+      inp.type = isNum ? 'number' : 'text';
+      inp.value = originalText;
+      inp.style.cssText = 'width:100%;border:none;background:transparent;font-size:inherit;font-family:inherit;padding:0;';
+      if (isNum) inp.style.textAlign = 'right';
+      else fitInputFontSize(inp, field === 'name' ? 14 : field === 'barcode' ? 13 : 12);
+      td.textContent = '';
+      td.appendChild(inp);
+      inp.focus();
+      inp.select();
+      const save = () => {
+        const id = td.dataset.id;
+        const p = products.find(x => x.id === id);
+        if (p) {
+          if (isNum) p[field] = parseInt(inp.value) || 0;
+          else p[field] = inp.value;
+          saveProducts();
+          toast('수정 완료', 'success');
+        }
+        td.textContent = inp.value;
+      };
+      inp.addEventListener('blur', save);
+      inp.addEventListener('keydown', e2 => {
+        if (e2.key === 'Enter') { e2.preventDefault(); inp.blur(); }
+        if (e2.key === 'Escape') { inp.removeEventListener('blur', save); td.textContent = originalText; }
+      });
+    });
+  }
+
+  // 페이지네이션 컨트롤
+  let pag = document.getElementById('prodPagination');
+  if (!pag) {
+    pag = document.createElement('div');
+    pag.id = 'prodPagination';
+    pag.className = 'prod-pagination';
+    $('#prodTable').parentElement.after(pag);
+  }
+  if (totalPages <= 1) {
+    pag.innerHTML = `<span class="small">${filtered.length}개 상품</span>`;
+  } else {
+    pag.innerHTML = `
+      <button class="btn btn-secondary" id="prodPrevBtn" style="padding:6px 12px;font-size:13px;" ${_prodPage === 0 ? 'disabled' : ''}>◀ 이전</button>
+      <span class="small">${_prodPage + 1} / ${totalPages} 페이지 (총 ${filtered.length}개)</span>
+      <button class="btn btn-secondary" id="prodNextBtn" style="padding:6px 12px;font-size:13px;" ${_prodPage >= totalPages - 1 ? 'disabled' : ''}>다음 ▶</button>
+    `;
+    document.getElementById('prodPrevBtn').addEventListener('click', () => { _prodPage--; renderProducts(); });
+    document.getElementById('prodNextBtn').addEventListener('click', () => { _prodPage++; renderProducts(); });
+  }
+}
+
+/* 검색 디바운스 200ms + 페이지 리셋 */
+let _prodSearchTimer = null;
+$('#prodSearch').addEventListener('input', () => {
+  if (_prodSearchTimer) clearTimeout(_prodSearchTimer);
+  _prodSearchTimer = setTimeout(() => { _prodPage = 0; renderProducts(); }, 200);
+});
+
+/* 화면 회전/리사이즈 시 편집 중인 input 폰트 크기 재조정 */
+let _fitResizeTimer = null;
+window.addEventListener('resize', () => {
+  if (_fitResizeTimer) clearTimeout(_fitResizeTimer);
+  _fitResizeTimer = setTimeout(() => {
+    const activeInp = document.querySelector('#prodTable tbody td.editable input');
+    if (activeInp) {
+      const field = activeInp.closest('td').dataset.field;
+      fitInputFontSize(activeInp, field === 'name' ? 14 : field === 'barcode' ? 13 : 12);
+    }
+  }, 120);
+});
+
+$('#btnAddProduct').addEventListener('click', () => {
+  const name = $('#pName').value.trim();
+  const barcode = $('#pBarcode').value.trim();
+  const keywords = $('#pKeywords').value.trim();
+  const defaultQty = parseInt($('#pDefaultQty').value) || 0;
+  const office = parseInt($('#pOffice').value) || 0;
+  const warehouse = parseInt($('#pWarehouse').value) || 0;
+  if (!name || !barcode) return toast('상품명과 바코드는 필수입니다', 'error');
+  if (products.find(p => p.barcode === barcode)) return toast('이미 등록된 바코드입니다', 'error');
+  products.push({
+    id: 'p' + Date.now(),
+    name, barcode, keywords, defaultQty, office, warehouse,
+  });
+  saveProducts();
+  $('#pName').value = ''; $('#pBarcode').value = ''; $('#pKeywords').value = '';
+  $('#pDefaultQty').value = 0; $('#pOffice').value = 0; $('#pWarehouse').value = 0;
+  renderProducts();
+  renderQuickPick();
+  toast('상품 추가 완료: ' + name, 'success');
+});
+
+$('#btnScanForAdd').addEventListener('click', () => {
+  startScanner(code => {
+    $('#pBarcode').value = code;
+    stopScanner();
+    toast('바코드 인식: ' + code, 'success');
+  });
+});
+
+/* ====================  CSV 가져오기/내보내기  ==================== */
+function downloadCSV(filename, rows) {
+  const csv = rows.map(r =>
+    r.map(c => {
+      const s = String(c == null ? '' : c);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }).join(',')
+  ).join('\n');
+  const bom = '﻿';
+  const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+$('#btnExportInv').addEventListener('click', () => {
+  const rows = [['상품명','바코드','검색어','기본수량','사무실','창고','합계']];
+  products.forEach(p => rows.push([p.name, p.barcode, p.keywords||'', p.defaultQty||0, p.office, p.warehouse, p.office + p.warehouse]));
+  downloadCSV(`재고현황_${nowStr().replace(/[: ]/g,'_')}.csv`, rows);
+});
+$('#btnExportHist').addEventListener('click', () => {
+  const rows = [['일시','상품명','바코드','구분','위치','수량','메모','사무실잔여','창고잔여']];
+  history.forEach(h => rows.push([h.time, h.productName, h.barcode, h.type, h.location, h.qty, h.memo||'', h.officeAfter, h.warehouseAfter]));
+  downloadCSV(`거래내역_${nowStr().replace(/[: ]/g,'_')}.csv`, rows);
+});
+$('#btnExportProd').addEventListener('click', () => {
+  const rows = [['상품명','바코드','검색어','기본수량','사무실','창고']];
+  products.forEach(p => rows.push([p.name, p.barcode, p.keywords||'', p.defaultQty||0, p.office, p.warehouse]));
+  downloadCSV(`상품목록_${nowStr().replace(/[: ]/g,'_')}.csv`, rows);
+});
+
+$('#btnImportCsv').addEventListener('click', () => $('#csvFile').click());
+$('#csvFile').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const text = ev.target.result.replace(/^﻿/, '');
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    let added = 0, skipped = 0;
+    // 헤더에서 컬럼 위치를 자동 감지 (옛 CSV도 호환)
+    const header = parseCsvLine(lines[0]).map(s => s.trim().toLowerCase());
+    const idxName       = header.findIndex(h => h.includes('상품') || h.includes('name'));
+    const idxBarcode    = header.findIndex(h => h.includes('바코드') || h.includes('barcode'));
+    const idxKeywords   = header.findIndex(h => h.includes('검색') || h.includes('keyword') || h.includes('태그'));
+    const idxDefaultQty = header.findIndex(h => h.includes('기본수량') || h.includes('default'));
+    const idxOffice     = header.findIndex(h => h.includes('사무'));
+    const idxWarehouse  = header.findIndex(h => h.includes('창고'));
+
+    lines.slice(1).forEach(line => {
+      const cols = parseCsvLine(line);
+      if (cols.length < 2) return;
+      const name       = (idxName    >= 0 ? cols[idxName]    : cols[0]) || '';
+      const barcode    = (idxBarcode >= 0 ? cols[idxBarcode] : cols[1]) || '';
+      const keywords   = idxKeywords   >= 0 ? (cols[idxKeywords]||'')   : '';
+      const defaultQty = idxDefaultQty >= 0 ? (cols[idxDefaultQty]||0) : 0;
+      const office     = idxOffice     >= 0 ? cols[idxOffice]     : (cols.length >= 5 ? cols[3] : cols[2]);
+      const warehouse  = idxWarehouse  >= 0 ? cols[idxWarehouse]  : (cols.length >= 5 ? cols[4] : cols[3]);
+      if (!name.trim() || !barcode.trim()) return;
+      if (products.find(p => p.barcode === barcode.trim())) { skipped++; return; }
+      products.push({
+        id: 'p' + Date.now() + '_' + added,
+        name: name.trim(),
+        barcode: barcode.trim(),
+        keywords: (keywords || '').trim(),
+        defaultQty: parseInt(defaultQty) || 0,
+        office: parseInt(office) || 0,
+        warehouse: parseInt(warehouse) || 0,
+      });
+      added++;
+    });
+    saveProducts();
+    renderProducts();
+    renderQuickPick();
+    toast(`가져오기 완료: 추가 ${added}, 중복 스킵 ${skipped}`, 'success');
+  };
+  reader.readAsText(f, 'utf-8');
+  e.target.value = '';
+});
+
+function parseCsvLine(line) {
+  const out = []; let cur = ''; let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQ) {
+      if (c === '"' && line[i+1] === '"') { cur += '"'; i++; }
+      else if (c === '"') inQ = false;
+      else cur += c;
+    } else {
+      if (c === ',') { out.push(cur); cur = ''; }
+      else if (c === '"') inQ = true;
+      else cur += c;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
+/* ====================  빠른 선택 (최근/자주 쓰는 상품)  ==================== */
+function renderQuickPick() {
+  const box = $('#quickPick');
+  box.innerHTML = '';
+  const recent = [];
+  for (const h of history) {
+    if (recent.find(r => r.id === h.productId)) continue;
+    const p = products.find(x => x.id === h.productId);
+    if (p) recent.push(p);
+    if (recent.length >= 8) break;
+  }
+  const list = recent.length ? recent : products.slice(0, 8);
+  list.forEach(p => {
+    const b = document.createElement('button');
+    b.innerHTML = `${escapeHtml(p.name)}<span class="qb">${escapeHtml(p.barcode)}</span>`;
+    b.addEventListener('click', () => selectProduct(p));
+    box.appendChild(b);
+  });
+}
+
+/* ====================  구글시트 동기화  ==================== */
+function updateSyncStatus(state, msg) {
+  const el = $('#syncStatus');
+  el.className = 'sync-status ' + state;
+  el.textContent = msg;
+}
+if (sheetUrl) {
+  $('#sheetUrl').value = sheetUrl;
+  updateSyncStatus('on', '시트 연결됨');
+}
+$('#autoSync').checked = autoSync;
+$('#autoSync').addEventListener('change', e => {
+  autoSync = e.target.checked;
+  localStorage.setItem(LS.autoSync, autoSync ? '1' : '0');
+  toast('자동 동기화: ' + (autoSync ? 'ON' : 'OFF'), 'success');
+});
+
+$('#btnSaveSheet').addEventListener('click', () => {
+  sheetUrl = $('#sheetUrl').value.trim();
+  localStorage.setItem(LS.sheetUrl, sheetUrl);
+  if (sheetUrl) updateSyncStatus('on', '시트 연결됨');
+  else updateSyncStatus('off', '시트 미연동');
+  toast('URL 저장 완료', 'success');
+});
+
+async function callSheet(action, data) {
+  if (!sheetUrl) throw new Error('시트 URL이 설정되지 않았습니다');
+  const res = await fetch(sheetUrl, {
+    method: 'POST',
+    mode: 'cors',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action, data }),
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return await res.json();
+}
+
+$('#btnTestSheet').addEventListener('click', async () => {
+  if (!sheetUrl) return toast('URL을 먼저 입력하세요', 'error');
+  updateSyncStatus('on', '연결 중...');
+  try {
+    const r = await callSheet('ping', {});
+    if (r.ok) {
+      updateSyncStatus('on', '시트 연결됨');
+      toast('✅ 연결 성공: ' + (r.message || 'OK'), 'success');
+    } else {
+      throw new Error(r.message || '응답 오류');
+    }
+  } catch (e) {
+    updateSyncStatus('err', '연결 실패');
+    toast('연결 실패: ' + e.message, 'error');
+  }
+});
+
+$('#btnPushAll').addEventListener('click', async () => {
+  if (!sheetUrl) return toast('URL을 먼저 입력하세요', 'error');
+  if (!confirm('구글시트에 현재 상품/재고/거래내역을 모두 업로드합니다.\n시트의 기존 데이터는 덮어쓰여집니다. 계속하시겠습니까?')) return;
+  toast('업로드 중...');
+  try {
+    const r = await callSheet('pushAll', { products, history });
+    if (r.ok) toast('✅ 업로드 완료', 'success');
+    else throw new Error(r.message);
+  } catch (e) { toast('실패: ' + e.message, 'error'); }
+});
+
+// 상품관리 페이지 - 재고 수정 후 현황 업로드 버튼
+$('#btnPushProducts').addEventListener('click', async () => {
+  if (!sheetUrl) {
+    toast('먼저 [설정] 탭에서 구글시트 URL을 등록하세요', 'error');
+    return;
+  }
+  // 편집 중인 셀이 있으면 blur로 저장 완료
+  const activeEditInp = document.querySelector('#prodTable tbody td.editable input');
+  if (activeEditInp) activeEditInp.blur();
+  if (!confirm(`수정한 상품 ${products.length}건의 재고 현황을 구글시트에 업로드합니다.\n시트의 기존 데이터는 덮어쓰여집니다. 계속하시겠습니까?`)) return;
+  const btn = $('#btnPushProducts');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ 업로드 중...';
+  toast('현황 업로드 중...');
+  try {
+    const r = await callSheet('pushAll', { products, history });
+    if (r.ok) {
+      toast('✅ 현황 업로드 완료', 'success');
+      updateSyncStatus('on', '시트 동기화됨');
+    } else {
+      throw new Error(r.message || '업로드 실패');
+    }
+  } catch (e) {
+    toast('실패: ' + e.message, 'error');
+    updateSyncStatus('err', '동기화 실패');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+});
+
+$('#btnPullAll').addEventListener('click', async () => {
+  if (!sheetUrl) return toast('URL을 먼저 입력하세요', 'error');
+  if (!confirm('구글시트의 데이터를 받아 현재 데이터를 덮어씁니다. 계속하시겠습니까?')) return;
+  try {
+    const r = await callSheet('pullAll', {});
+    if (r.ok && r.data) {
+      products = r.data.products || [];
+      history = r.data.history || [];
+      saveProducts(); saveHistory();
+      renderInventory(); renderHistory(); renderProducts(); renderQuickPick();
+      toast('✅ 다운로드 완료', 'success');
+    } else throw new Error(r.message);
+  } catch (e) { toast('실패: ' + e.message, 'error'); }
+});
+
+$('#btnSyncSheet').addEventListener('click', () => $('#btnPullAll').click());
+
+async function pushTransactionToSheet(tx) {
+  if (!sheetUrl) return;
+  try {
+    await callSheet('addTx', { tx, product: selected });
+    updateSyncStatus('on', '시트 동기화됨');
+  } catch (e) {
+    updateSyncStatus('err', '동기화 실패');
+    console.warn('동기화 실패', e);
+  }
+}
+
+/* ====================  백업/복원/초기화  ==================== */
+$('#btnBackup').addEventListener('click', () => {
+  const data = { products, history, exported: nowStr() };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `재고백업_${nowStr().replace(/[: ]/g,'_')}.json`;
+  a.click(); URL.revokeObjectURL(url);
+});
+$('#btnRestore').addEventListener('click', () => $('#restoreFile').click());
+$('#restoreFile').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (!data.products) throw new Error('잘못된 백업 파일');
+      if (!confirm('현재 데이터를 모두 덮어씁니다. 계속하시겠습니까?')) return;
+      products = data.products;
+      history = data.history || [];
+      saveProducts(); saveHistory();
+      renderInventory(); renderHistory(); renderProducts(); renderQuickPick();
+      toast('복원 완료', 'success');
+    } catch (err) { toast('복원 실패: ' + err.message, 'error'); }
+  };
+  reader.readAsText(f, 'utf-8');
+  e.target.value = '';
+});
+
+$('#btnReset').addEventListener('click', () => {
+  if (!confirm('정말로 모든 데이터를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) return;
+  if (!confirm('한번 더 확인합니다. 모든 상품과 거래내역이 사라집니다. 계속할까요?')) return;
+  localStorage.removeItem(LS.products);
+  localStorage.removeItem(LS.history);
+  location.reload();
+});
+
+/* ====================  보안 유틸  ==================== */
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function escapeAttr(s) { return escapeHtml(s); }
+
+/* ====================  초기화  ==================== */
+renderQuickPick();
+renderInventory();
+
+// 페이지 떠날 때 카메라 해제
+window.addEventListener('beforeunload', stopScanner);
+</script>
+</body>
+</html>
