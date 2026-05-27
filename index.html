@@ -256,6 +256,82 @@
     nav.tabs button { font-size: 12px; padding: 10px 4px; }
   }
 
+  /* 재고표 (보노/틸인스 현황표) */
+  .stocksheet-toggle {
+    display: flex; gap: 8px; margin-bottom: 14px;
+  }
+  .stocksheet-toggle button {
+    flex: 1;
+    padding: 12px 10px;
+    border: 2px solid #d1d5db;
+    background: #fff;
+    color: #6b7280;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .stocksheet-toggle button.active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(37,99,235,.25);
+  }
+  .stocksheet-table { font-size: 12px; }
+  .stocksheet-table th, .stocksheet-table td {
+    padding: 6px 8px;
+    border: 1px solid #e5e7eb;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .stocksheet-table thead th {
+    background: #f3f4f6;
+    color: #111;
+    font-weight: 700;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+  }
+  .stocksheet-table thead tr:nth-child(2) th {
+    top: 36px;
+    background: #f9fafb;
+    font-weight: 600;
+    color: #374151;
+    font-size: 11px;
+  }
+  .stocksheet-table .prod-name {
+    text-align: left;
+    background: #fafafa;
+    font-weight: 600;
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    min-width: 200px;
+    box-shadow: inset -1px 0 0 #e5e7eb;
+  }
+  .stocksheet-table thead .prod-name {
+    z-index: 4;
+    background: #f3f4f6;
+  }
+  .stocksheet-table td.num-cell {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    min-width: 48px;
+  }
+  .stocksheet-table td.num-cell.zero { color: #d1d5db; font-weight: 400; }
+  .stocksheet-table td.office { background: #fffbeb; }
+  .stocksheet-table td.warehouse { background: #eff6ff; }
+  .stocksheet-table thead th.office-sub { background: #fef3c7; color: #92400e; }
+  .stocksheet-table thead th.warehouse-sub { background: #dbeafe; color: #1e40af; }
+  .stocksheet-wrap {
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    max-height: 70vh;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+  }
+
   /* 상품관리: 탭편집 셀 */
   td.editable {
     cursor: pointer;
@@ -281,6 +357,7 @@
 
 <nav class="tabs">
   <button class="tab-btn active" data-tab="scan">🔍 스캔/입출고</button>
+  <button class="tab-btn" data-tab="stocksheet">📋 재고표</button>
   <button class="tab-btn" data-tab="inventory">📊 재고현황</button>
   <button class="tab-btn" data-tab="history">📋 거래내역</button>
   <button class="tab-btn" data-tab="products">🏷️ 상품관리</button>
@@ -358,6 +435,26 @@
         ✅ 처리하기
       </button>
       <button class="btn btn-secondary btn-block" id="btnCancel" style="margin-top:8px;">취소</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 재고표 (보노/틸인스 현황표) ============ -->
+<section class="panel" id="panel-stocksheet">
+  <div class="card">
+    <h2>📋 재고표</h2>
+    <div class="stocksheet-toggle">
+      <button id="btnStocksheetBono" class="active" data-sheet="bono">보노 현황표</button>
+      <button id="btnStocksheetTilins" data-sheet="tilins">틸인스 현황표</button>
+    </div>
+    <div class="small" style="margin-bottom:10px;">
+      <span id="stocksheetTitle">보노 현황표</span> · 사무실·창고 수량은 등록된 상품의 재고를 자동 매칭하여 표시합니다.
+    </div>
+    <div class="stocksheet-wrap">
+      <table class="stocksheet-table" id="stocksheetTable">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
     </div>
   </div>
 </section>
@@ -619,6 +716,7 @@ $$('.tab-btn').forEach(btn => {
     if (btn.dataset.tab === 'inventory') renderInventory();
     if (btn.dataset.tab === 'history') renderHistory();
     if (btn.dataset.tab === 'products') renderProducts();
+    if (btn.dataset.tab === 'stocksheet') renderStocksheet();
     // 스캔 탭이 아닐 때는 카메라 자동 정지 (배터리/리소스 절약 + 오작동 방지)
     if (btn.dataset.tab !== 'scan') {
       stopScanner();
@@ -954,6 +1052,213 @@ $('#btnCancel').addEventListener('click', () => {
 });
 
 /* ====================  재고현황  ==================== */
+/* ====================  재고표 (보노/틸인스 현황표)  ==================== */
+const STOCKSHEET_DATA = {
+  bono: {
+    title: '보노 현황표',
+    colors: ['화이트', '매트크림', '실버', '다크그레이', '블랙'],
+    products: [
+      '[베코] 보노 일괄소등스위치 1구',
+      '[베코] 보노 스위치 1구',
+      '[베코] 보노 스위치 2구',
+      '[베코] 보노 스위치 2구(하FAN)',
+      '[베코] 보노 스위치 3구',
+      '[베코] 보노 스위치 3구(중FAN)',
+      '[베코] 보노 스위치 4구 (2+2)',
+      '[베코] 보노 스위치 4구 (1+3)',
+      '[베코] 보노 스위치 5구',
+      '[베코] 보노 스위치 6구',
+      '[베코] 보노 스위치 중2구',
+      '[베코] 보노 스위치 중3구',
+      '[베코] 보노 스위치 3로1구',
+      '[베코] 보노 스위치 3로2구',
+      '[베코] 보노 스위치 3로3구',
+      '[베코] 보노 콘센트 1구',
+      '[베코] 보노 콘센트 2구',
+      '[베코] 보노 콘센트 가로2구',
+      '[베코] 보노 콘센트 4구',
+      '[베코] 보노 방우콘센트 1구',
+      '[베코] 보노 방우콘센트 세로2구',
+      '[베코] 보노 방우콘센트 가로2구',
+      '[베코] 보노 전화 4p',
+      '[베코] 보노 4p+8P',
+      '[베코] 보노 8p 1구',
+      '[베코] 보노 8p 2구',
+      '[베코] 보노 8p 3구',
+      '[베코] 보노 8p 2구(2개용)',
+      '[베코] 보노 catv 1방',
+      '[베코] 보노 catv 2방',
+      '[베코] 보노 catv 3방',
+      '[베코] 보노 catv 3방2구 (2개용)',
+      '[베코] 보노 8P 1구+CATV 2방(1개용)',
+      '[베코] 보노 8P 2구+CATV 2방(1개용)',
+      '[베코] 보노 8P 1구+CATV 3방(2개용)',
+      '[베코] 보노 8P 2구+CATV 3방(2개용)',
+      '[베코] 보노 맹커버 1개용',
+      '[베코] 보노 맹커버 2개용',
+      '[베코] 보노 스피커잭 1구',
+      '[베코] 보노 스피커잭 2구',
+      '[베코] 보노 바나나잭 1구',
+      '[베코] 보노 바나나잭 2구',
+      '[베코] 보노 보조대 1개용',
+      '[베코] 보노 보조대 2개용',
+    ],
+  },
+  tilins: {
+    title: '틸인스 현황표',
+    colors: [
+      'ti1 화이트',
+      'ti2 화이트/스노우(무광)',
+      'ti2 블랙/화이트',
+      'ti2 다크/블랙',
+      'ti2 화이트/실버(펄)',
+      'ti2 화이트/그레이',
+      'ti4 메탈그레이',
+      'ti4 샴페인골드',
+    ],
+    products: [
+      '틸인스 일괄소등스위치 1구',
+      '틸인스 스위치 1구',
+      '틸인스 스위치 2구',
+      '틸인스 스위치 3구',
+      '틸인스 스위치 중4구',
+      '틸인스 스위치 중5구',
+      '틸인스 스위치 중6구',
+      '틸인스 스위치 중2구',
+      '틸인스 스위치 중3구',
+      '틸인스 스위치 3로1구',
+      '틸인스 스위치 3로2구',
+      '틸인스 스위치 3로3구',
+      '틸인스 콘센트 1구',
+      '틸인스 콘센트 2구',
+      '틸인스 콘센트 가로2구',
+      '틸인스 콘센트 4구',
+      '틸인스 방우콘센트 1구',
+      '틸인스 방우콘센트 세로2구',
+      '틸인스 방우콘센트 가로2구',
+      '틸인스 usb-a+a 콘센트 1구',
+      '틸인스 usb-a+a 콘센트 3구',
+      '틸인스 usb-a+c(고속) 콘센트 1구',
+      '틸인스 usb-a+c(고속) 콘센트 3구',
+      '틸인스 4p',
+      '틸인스 4p+8P',
+      '틸인스 8p',
+      '틸인스 8p+8p',
+      '틸인스 catv 1방',
+      '틸인스 catv 2방',
+      '틸인스 catv 3방',
+      '틸인스 matv 3방',
+      '틸인스 8P 1구+CATV 2방(1개용)',
+      '틸인스 8P 2구+CATV 2방(1개용)',
+      '틸인스 8P 1구+CATV 3방(2개용)',
+      '틸인스 8P 2구+CATV 3방(2개용)',
+      '틸인스 맹커버 1개용',
+      '틸인스 맹커버 2개용',
+      '틸인스 스피커잭 1구',
+      '틸인스 스피커잭 2구',
+      '틸인스 바나나잭 1구',
+      '틸인스 바나나잭 2구',
+      '틸인스 보조대 1개용',
+      '틸인스 보조대 2개용',
+      '틸인스 플레이트 1구 (1개용)',
+      '틸인스 플레이트 2구 (1개용)',
+      '틸인스 플레이트 3구 (1개용)',
+      '틸인스 플레이트 5구 (2개용)',
+      '틸인스 플레이트 6구 (2개용)',
+      '틸인스 통합수구 콘2구+공란(슬림형)',
+      '틸인스 통합수구 콘2구+공란(2개용)',
+      '틸인스 통합수구 콘2구+공란+공란(3개용)',
+      '틸인스 통합수구 콘4구+공란(3개용)',
+      '틸인스 통합수구 콘4구+공란+공란(4개용)',
+    ],
+  },
+};
+
+let _stocksheetActive = 'bono';
+
+function _stockNormName(s) {
+  // 모든 [...] 제거 후 소문자/공백/구분자 제거
+  return String(s || '')
+    .replace(/\[[^\]]*\]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[·.,]/g, '');
+}
+function _stockNormColor(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/\s+/g, '');
+}
+function _stockExtractColor(productName) {
+  // 마지막 [...] 를 컬러로 추출
+  const m = String(productName || '').match(/\[([^\]]+)\]\s*$/);
+  return m ? m[1].trim() : '';
+}
+function _stockStripColor(productName) {
+  return String(productName || '').replace(/\[[^\]]+\]\s*$/, '').trim();
+}
+
+function _stockBuildIndex() {
+  // products 배열을 (normName + '@' + normColor) -> product 로 인덱싱
+  const idx = new Map();
+  for (const p of products) {
+    const pColor = _stockExtractColor(p.name);
+    const pNameNoColor = _stockStripColor(p.name);
+    const key = _stockNormName(pNameNoColor) + '@' + _stockNormColor(pColor);
+    if (!idx.has(key)) idx.set(key, p);
+  }
+  return idx;
+}
+
+function renderStocksheet() {
+  const sheet = STOCKSHEET_DATA[_stocksheetActive];
+  if (!sheet) return;
+  $('#stocksheetTitle').textContent = sheet.title;
+
+  // 상단 토글 활성 표시
+  $('#btnStocksheetBono').classList.toggle('active', _stocksheetActive === 'bono');
+  $('#btnStocksheetTilins').classList.toggle('active', _stocksheetActive === 'tilins');
+
+  // 헤더 (2행: 색상 / 사무실·창고)
+  const thead = $('#stocksheetTable thead');
+  let h1 = '<tr><th rowspan="2" class="prod-name">상품명</th>';
+  sheet.colors.forEach(c => {
+    h1 += `<th colspan="2">${escapeHtml(c)}</th>`;
+  });
+  h1 += '</tr><tr>';
+  sheet.colors.forEach(() => {
+    h1 += '<th class="office-sub">사무실</th><th class="warehouse-sub">창고</th>';
+  });
+  h1 += '</tr>';
+  thead.innerHTML = h1;
+
+  // 본문
+  const idx = _stockBuildIndex();
+  const tbody = $('#stocksheetTable tbody');
+  tbody.innerHTML = '';
+  sheet.products.forEach(rowName => {
+    const rowKeyName = _stockNormName(rowName);
+    let html = `<tr><td class="prod-name">${escapeHtml(rowName)}</td>`;
+    sheet.colors.forEach(color => {
+      const key = rowKeyName + '@' + _stockNormColor(color);
+      const p = idx.get(key);
+      const office = p ? Number(p.office) || 0 : 0;
+      const warehouse = p ? Number(p.warehouse) || 0 : 0;
+      html += `<td class="num-cell office ${office === 0 ? 'zero' : ''}">${office}</td>`;
+      html += `<td class="num-cell warehouse ${warehouse === 0 ? 'zero' : ''}">${warehouse}</td>`;
+    });
+    html += '</tr>';
+    tbody.innerHTML += html;
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const bb = document.getElementById('btnStocksheetBono');
+  const tb = document.getElementById('btnStocksheetTilins');
+  if (bb) bb.addEventListener('click', () => { _stocksheetActive = 'bono'; renderStocksheet(); });
+  if (tb) tb.addEventListener('click', () => { _stocksheetActive = 'tilins'; renderStocksheet(); });
+});
+
 function renderInventory() {
   const q = ($('#invSearch').value || '').toLowerCase().trim();
   const tokens = q.split(/\s+/).filter(Boolean);
