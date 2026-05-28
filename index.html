@@ -1189,6 +1189,7 @@ function _stockNormName(s) {
 }
 function _stockNormColor(s) {
   return String(s || '')
+    .replace(/\([^)]*\)/g, '')   // (도장), (무광) 등 괄호 표기 제거
     .toLowerCase()
     .replace(/\s+/g, '');
 }
